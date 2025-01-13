@@ -10,6 +10,20 @@ import {
 } from '../index.js'
 import { createRoute } from './dynamic-helpers.js'
 
+const description = `
+The Dynamic XML Badge allows you to extract an arbitrary value from any
+XML Document using an XPath selector and show it on a badge.
+
+Useful resources for constructing XPath selectors:
+- [XPather](http://xpather.com/)
+- [XPath Cheat Sheet](https://devhints.io/xpath/)
+
+Note: For XML documents that use a default namespace prefix, you will need to use the
+[local-name](https://developer.mozilla.org/en-US/docs/Web/XPath/Functions/local-name)
+function to construct your query.
+For example \`/*[local-name()='myelement']\` rather than \`/myelement\`.
+`
+
 // This service extends BaseService because it uses a different XML parser
 // than BaseXmlService which can be used with xpath.
 //
@@ -24,10 +38,7 @@ export default class DynamicXml extends BaseService {
     '/badge/dynamic/xml': {
       get: {
         summary: 'Dynamic XML Badge',
-        description: `<p>
-          The Dynamic XML Badge allows you to extract an arbitrary value from any
-          XML Document using an XPath selector and show it on a badge.
-        </p>`,
+        description,
         parameters: queryParams(
           {
             name: 'url',
@@ -38,7 +49,7 @@ export default class DynamicXml extends BaseService {
           {
             name: 'query',
             description:
-              'A <a href="http://xpather.com/">XPath</a> expression that will be used to query the document',
+              'An XPath expression that will be used to query the document',
             required: true,
             example: '//slideshow/slide[1]/title',
           },
@@ -59,16 +70,28 @@ export default class DynamicXml extends BaseService {
 
   static defaultBadgeData = { label: 'custom badge' }
 
-  transform({ pathExpression, buffer }) {
+  transform({ pathExpression, buffer, contentType = 'text/xml' }) {
     // e.g. //book[2]/@id
     const pathIsAttr = (
       pathExpression.split('/').slice(-1)[0] || ''
     ).startsWith('@')
-    const parsed = new DOMParser().parseFromString(buffer)
+
+    let parsed
+    try {
+      parsed = new DOMParser().parseFromString(buffer, contentType)
+    } catch (e) {
+      throw new InvalidResponse({ prettyMessage: e.message })
+    }
 
     let values
     try {
-      values = xpath.select(pathExpression, parsed)
+      if (contentType === 'text/html') {
+        values = xpath
+          .parse(pathExpression)
+          .select({ node: parsed, isHtml: true })
+      } else {
+        values = xpath.select(pathExpression, parsed)
+      }
     } catch (e) {
       throw new InvalidParameter({ prettyMessage: e.message })
     }
@@ -105,15 +128,25 @@ export default class DynamicXml extends BaseService {
   }
 
   async handle(_namedParams, { url, query: pathExpression, prefix, suffix }) {
-    const { buffer } = await this._request({
+    const { buffer, res } = await this._request({
       url,
       options: { headers: { Accept: 'application/xml, text/xml' } },
       httpErrors,
+      logErrors: [],
     })
+
+    let contentType = 'text/xml'
+    if (
+      res.headers['content-type'] &&
+      res.headers['content-type'].includes('text/html')
+    ) {
+      contentType = 'text/html'
+    }
 
     const { values: value } = this.transform({
       pathExpression,
       buffer,
+      contentType,
     })
 
     return renderDynamicBadge({ value, prefix, suffix })
