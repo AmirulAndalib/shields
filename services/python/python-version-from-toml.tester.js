@@ -1,5 +1,5 @@
 import Joi from 'joi'
-import pep440 from '@renovate/pep440'
+import pep440 from '@renovatebot/pep440'
 import { createServiceTester } from '../tester.js'
 export const t = await createServiceTester()
 
@@ -22,6 +22,6 @@ t.create(
   'python versions - valid toml with missing python-requires field (invalid)',
 )
   .get(
-    '/python/required-version-toml.json?tomlFilePath=https://raw.githubusercontent.com/django/django/main/pyproject.toml',
+    '/python/required-version-toml.json?tomlFilePath=https://raw.githubusercontent.com/psf/requests/main/pyproject.toml',
   )
   .expectBadge({ label: 'python', message: 'invalid response data' })
